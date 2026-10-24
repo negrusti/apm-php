@@ -74,7 +74,10 @@ func main() {
 				Total float64 `json:"total_ms"`
 			}
 		}
-		read("/api/dashboard?app="+url.QueryEscape(id)+"&kind="+kind, &raw)
+		// Query windows have an exclusive upper bound. Include the just-flushed
+		// harvest even when this assertion runs in its same wall-clock second.
+		to := time.Now().Unix() + 1
+		read(fmt.Sprintf("/api/dashboard?app=%s&kind=%s&from=%d&to=%d", url.QueryEscape(id), kind, to-3600, to), &raw)
 		if len(raw.Rows) != 1 || raw.Rows[0].Calls != 2 || raw.Rows[0].Self != 20 || raw.Rows[0].Total != 40 {
 			log.Fatalf("incorrect %s totals: %+v", kind, raw.Rows)
 		}
