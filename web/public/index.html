@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+ <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+ <meta name="theme-color" content="#102d29"><title>Relay APM · WordPress performance</title>
+ <meta name="description" content="Understand WordPress plugin and hook performance with Relay APM.">
+ <link rel="icon" href="/icon.svg" type="image/svg+xml"><link rel="stylesheet" href="/style.css">
+ <script src="/app.js" defer></script>
+</head>
+<body>
+<div id="login" class="login-screen" hidden>
+ <form id="loginForm" class="login-card">
+  <div class="brand login-brand"><span class="brand-mark">r</span>relay<span class="brand-apm">APM</span></div>
+  <span class="eyebrow">YOUR APPLICATION. YOUR SIGNAL.</span>
+  <h1>A clearer view<br>of WordPress.</h1><p>Sign in to your performance workspace.</p>
+  <label for="accessToken">Workspace access token</label><input id="accessToken" type="password" autocomplete="current-password" required placeholder="Enter your access token">
+  <button class="button primary" type="submit">Open workspace <span aria-hidden="true">↗</span></button><p id="loginError" role="alert" class="error-text"></p>
+ </form>
+</div>
+<div id="shell" class="shell" hidden>
+ <aside class="sidebar">
+  <a class="brand" href="/" aria-label="Relay APM home"><span class="brand-mark">r</span>relay<span class="brand-apm">APM</span></a>
+  <div class="workspace"><span class="workspace-avatar">W</span><div>WordPress workspace<small>Performance monitoring</small></div></div>
+  <div class="nav-label">OBSERVE</div>
+  <nav aria-label="Main navigation"><button class="nav-item active" id="navPerformance"><span class="nav-symbol">▥</span> WordPress <span class="nav-dot"></span></button><button class="nav-item" id="navSetup"><span class="nav-symbol">⌁</span> Connect a site <span class="nav-arrow">↗</span></button></nav>
+  <div class="sidebar-note"><span class="tiny-signal"><i></i><i></i><i></i><i></i></span><strong>Every millisecond<br>has a story.</strong><p>Find the plugins and hooks<br>behind your response time.</p></div>
+  <div class="sidebar-bottom"><span class="retention-icon">◷</span><div>7-day retention<small>Your data, on your server</small></div><button id="helpButton" class="icon-button" aria-label="Open workspace information">?</button></div>
+ </aside>
+ <div class="workspace-main">
+  <header class="topbar"><div class="breadcrumbs">Applications <span>/</span> <strong>WordPress</strong></div><div class="topbar-right"><span id="sourceBadge" class="source-badge">Connecting</span><button id="connectionButton" class="avatar-button" aria-label="Workspace settings">W</button></div></header>
+  <main>
+   <div id="sampleBanner" class="sample-banner" hidden><span>◈</span><strong>Sample workspace</strong><span>Illustrative data. Connect your site to see actual performance.</span><button id="sampleConnect">Connect a site ↗</button></div>
+   <div class="page-heading"><div><div class="eyebrow"><span class="wp-mark">W</span> APPLICATION PERFORMANCE</div><h1>WordPress performance<span class="heading-dot">.</span></h1><p>See which plugins and hooks are doing the heavy lifting.</p></div><button id="exportButton" class="button secondary"><span aria-hidden="true">↓</span> Export CSV</button></div>
+   <section class="toolbar" aria-label="Dashboard filters"><div class="application-control"><span class="app-indicator"></span><label class="sr-only" for="application">Application</label><select id="application"><option value="all">All applications</option></select></div><div class="toolbar-right"><span class="timezone">Local time</span><label class="sr-only" for="range">Time range</label><select id="range"><option value="1800">Last 30 minutes</option><option value="3600" selected>Last 60 minutes</option><option value="21600">Last 6 hours</option><option value="86400">Last 24 hours</option><option value="604800">Last 7 days</option></select><button id="refreshButton" class="icon-button refresh-button" aria-label="Refresh dashboard">↻</button><label class="auto-refresh"><input id="autoRefresh" type="checkbox" checked><span>Auto</span></label></div></section>
+   <div class="tab-row"><div class="tabs" role="tablist" aria-label="Breakdown category"><button class="tab active" id="pluginTab" role="tab" aria-selected="true" data-kind="plugin">Plugins &amp; themes <span id="pluginCount">—</span></button><button class="tab" id="hookTab" role="tab" aria-selected="false" data-kind="hook">Hooks <span id="hookCount">—</span></button></div><span id="updatedAt" class="updated-at" aria-live="polite">Waiting for data</span></div>
+   <div id="errorBanner" class="error-banner" role="alert" hidden><span id="errorMessage"></span><button id="retryButton">Retry</button></div>
+   <div id="loading" class="loading-strip" hidden>Updating performance data…</div>
+   <div id="dataArea">
+    <section class="stat-grid" aria-label="Performance summary">
+     <article class="stat-card"><div class="stat-label">Total self time <span class="stat-icon teal">◷</span></div><div class="stat-value" id="statSelf">—</div><div class="stat-foot">Time inside observed callbacks</div></article>
+     <article class="stat-card"><div class="stat-label">Callback throughput <span class="stat-icon blue">↗</span></div><div class="stat-value" id="statRate">—</div><div class="stat-foot" id="statCalls">— calls in this window</div></article>
+     <article class="stat-card"><div class="stat-label">Average callback time <span class="stat-icon purple">⌁</span></div><div class="stat-value" id="statAvg">—</div><div class="stat-foot">Total duration divided by calls</div></article>
+     <article class="stat-card emphasis"><div class="stat-label" id="topLabel">Largest self-time contributor <span class="stat-icon">↗</span></div><div class="stat-value top-name" id="statTop">—</div><div class="stat-foot" id="statShare">Share of observed self time</div></article>
+    </section>
+    <section class="charts-grid">
+     <article class="panel breakdown-panel"><div class="panel-heading"><div><h2>Where time is spent</h2><p id="chartSubtitle">Self-time contribution by plugin &amp; theme</p></div><span class="unit-label">ms / min</span></div><div id="mainChart" class="main-chart" aria-label="Self time by component over time"></div><div id="chartLegend" class="chart-legend"></div></article>
+     <article class="panel activity-panel"><div class="panel-heading"><div><h2>Callback activity</h2><p>Calls across the selected category</p></div><span class="unit-label">calls / min</span></div><div id="activityChart" class="activity-chart" aria-label="Callback throughput over time"></div><div class="activity-footer"><span class="legend-dot teal-bg"></span>Callback throughput<span id="activityPeak" class="activity-peak"></span></div></article>
+    </section>
+    <section class="panel table-panel"><div class="table-heading"><div><h2 id="tableTitle">Plugin &amp; theme breakdown <span id="rowCount" class="count-pill">0</span></h2><p>Find the biggest contributors. Select a row to look closer.</p></div><label class="search-box"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Find a plugin or theme…" aria-label="Filter breakdown rows"><kbd>/</kbd></label></div>
+     <div class="table-scroll"><table><thead><tr><th class="name-column" id="nameHeading">Plugin / theme</th><th><button data-sort="calls">Calls <span>↕</span></button></th><th><button data-sort="avg_ms">Avg. duration <span>↕</span></button></th><th><button data-sort="total_ms">Total time <span>↕</span></button></th><th><button data-sort="self_ms" class="sorted">Self time <span>↓</span></button></th><th class="share-column">Self-time share</th><th class="arrow-column"></th></tr></thead><tbody id="breakdownRows"></tbody></table></div>
+     <div id="emptyState" class="empty-state" hidden><span>⌁</span><h3>No WordPress metrics yet</h3><p>Connect your PHP agent, then let a few requests reach WordPress.</p><button id="emptyConnect" class="button secondary">Connect a site ↗</button></div>
+     <div id="noResults" class="no-results" hidden>No matching components. Try another search.</div>
+     <div class="table-footer"><span id="tableSummary">—</span><span><span class="legend-dot teal-bg"></span> Measured at hook callbacks</span></div>
+    </section>
+    <div class="context-note"><span>ⓘ</span><p>Plugins and hooks can describe the same work. Their totals are separate views, and should not be added together. Self-time share is within the selected category.</p></div>
+   </div>
+   <footer class="page-footer"><span>RELAY APM <span class="footer-dot">·</span> Your signal, without the noise.</span><span id="windowLabel">Seven days of visibility.</span></footer>
+  </main>
+ </div>
+</div>
+<dialog id="detailDialog" class="detail-dialog"><div class="dialog-top"><span class="eyebrow" id="detailCategory">PLUGIN / THEME</span><button id="detailClose" class="icon-button" aria-label="Close detail">×</button></div><h2 id="detailName"></h2><p class="dialog-description">Observed performance in the selected application and time window.</p><div id="detailStats" class="detail-stats"></div><div class="panel-heading"><h3>Self time over time</h3><span class="unit-label">ms / min</span></div><div id="detailChart" class="detail-chart"></div><div class="detail-note">Callback durations include nested work. Self time excludes nested instrumented segments; it is not a CPU-time measurement. These are aggregated metrics, not a complete function call tree.</div></dialog>
+<dialog id="setupDialog" class="setup-dialog"><div class="dialog-top"><span class="eyebrow">CONNECT YOUR WORDPRESS SITE</span><button id="setupClose" class="icon-button" aria-label="Close setup">×</button></div><h2>A direct line to your application.</h2><p class="dialog-description">Use the stock New Relic PHP module with the Relay PHP daemon. No additional WordPress plugin is required.</p><div class="setup-step"><span>01</span><div><h3>Configure the Relay daemon</h3><p>Install the relay-php-daemon package on the PHP server. Set the backend URL in /etc/relay-php-daemon/daemon.cfg, then start the service. HTTP is for trusted private networks; HTTPS verifies the server certificate.</p><pre id="setupDaemonCode"></pre><h3>Connect the PHP module</h3><p>Use the ingestion key created for your site.</p><pre id="setupCode"></pre><button id="copySetup" class="button secondary">Copy configuration</button></div></div><div class="setup-step"><span>02</span><div><h3>Restart PHP and generate traffic</h3><p>Restart PHP-FPM or Apache after changing the configuration. Open a few WordPress pages and allow a harvest cycle, normally about one minute.</p></div></div><div class="setup-step"><span>03</span><div><h3>Explore the breakdown</h3><p>Your application appears once its first metric batch is stored. Plugin/theme and hook metrics include call counts, total duration, and self time.</p></div></div><div class="setup-note" id="setupSource"></div><button id="logoutButton" class="button secondary">Sign out of workspace</button></dialog>
+<div id="toast" class="toast" role="status" hidden></div>
+</body></html>

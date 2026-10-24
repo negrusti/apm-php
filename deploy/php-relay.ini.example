@@ -1,0 +1,12 @@
+; Merge into the stock New Relic PHP extension's active INI, then restart PHP.
+; Do not load the extension twice if the stock package already loads it.
+newrelic.appname = "My WordPress site"
+newrelic.license = "YOUR_GENERATED_40_CHARACTER_INGEST_KEY"
+newrelic.daemon.address = "/run/relay-php-daemon/agent.sock"
+; 3 prevents the extension from auto-starting either stock daemon process.
+newrelic.daemon.dont_launch = 3
+newrelic.framework.wordpress.hooks = true
+newrelic.framework.wordpress.hooks.options = "plugin_callbacks"
+newrelic.browser_monitoring.auto_instrument = false
+newrelic.application_logging.forwarding.enabled = false
+; Backend host/IP and transport belong in daemon.cfg, not in PHP configuration.

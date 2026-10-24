@@ -1,0 +1,23 @@
+# Relay PHP daemon. Restart relay-php-daemon after editing.
+# Choose ONE backend. The PHP extension never chooses the destination.
+backend = "https://apm.example.com"
+# backend = "http://10.0.0.20:8088"
+# backend = "https://192.0.2.20:443" # Certificate must contain this IP in its SAN.
+# HTTP carries the ingestion key and telemetry in plaintext. Use it on a trusted
+# private network, or use HTTPS for encrypted transport.
+
+address = "/run/relay-php-daemon/agent.sock"
+logfile = "/dev/stderr"
+loglevel = "info"
+app_timeout = 10m
+
+# Optional private CA (PEM bundle). Certificate verification always stays on.
+# ssl_ca_bundle = "/etc/relay-php-daemon/backend-ca.pem"
+
+# Avoid cloud metadata probes on client machines.
+utilization.detect_aws = false
+utilization.detect_azure = false
+utilization.detect_gcp = false
+utilization.detect_pcf = false
+utilization.detect_docker = false
+utilization.detect_kubernetes = false

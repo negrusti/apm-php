@@ -1,0 +1,9 @@
+/.analysis/
+/bin/
+/.env
+/clients.json
+/*.log
+/web/node_modules/
+/dist/
+**/__pycache__/
+/upstream/newrelic-php-agent/

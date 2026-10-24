@@ -1,0 +1,164 @@
+name: Ubuntu packages
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ubuntu-packages-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+env:
+  GOTOOLCHAIN: local
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.27.3'
+          cache-dependency-path: |
+            go.mod
+            daemon/go.sum
+      - name: Test backend and fork
+        run: |
+          python3 tools/test-package-builder.py
+          go test -race ./...
+          go vet ./...
+          (cd daemon && go test -tags use_system_certs ./... && go vet -tags use_system_certs ./...)
+      - name: Build separate backend and daemon packages
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          version="0.1.0~ci.${RUN_NUMBER}-1"
+          if [[ "$REF_TYPE" == tag ]]; then
+            [[ "$REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$ ]] || { echo 'Expected a vMAJOR.MINOR.PATCH tag'; exit 1; }
+            version="${REF_NAME#v}-1"
+          fi
+          export SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)
+          python3 tools/build-debs.py --version "$version"
+          python3 tools/verify-debs.py
+          bash -n tools/test-ubuntu-packages.sh
+          for package in dist/debs/*.deb; do dpkg-deb --info "$package"; done
+          for arch in amd64 arm64; do
+            (cd daemon && CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -mod=readonly -trimpath -tags use_system_certs -o "../bin/relay-probe-linux-$arch" ./cmd/relay-probe)
+          done
+      - uses: actions/upload-artifact@v6
+        with:
+          name: ubuntu-debs
+          path: dist/debs/
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v6
+        with:
+          name: acceptance-probes
+          path: bin/relay-probe-linux-*
+          if-no-files-found: error
+          retention-days: 1
+
+  native-ubuntu:
+    needs: build
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-22.04, ubuntu-24.04, ubuntu-26.04, ubuntu-24.04-arm, ubuntu-26.04-arm]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v6
+        with:
+          name: ubuntu-debs
+          path: dist/debs/
+      - uses: actions/download-artifact@v6
+        with:
+          name: acceptance-probes
+          path: bin/
+      - name: Native installation and systemd acceptance
+        run: |
+          (cd dist/debs && sha256sum -c SHA256SUMS)
+          chmod +x bin/relay-probe-linux-*
+          sudo bash tools/test-ubuntu-packages.sh --disposable-vm
+
+  native-clickhouse:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.27.3'
+          cache: false
+      - uses: actions/download-artifact@v6
+        with:
+          name: ubuntu-debs
+          path: dist/debs/
+      - uses: actions/download-artifact@v6
+        with:
+          name: acceptance-probes
+          path: bin/
+      - name: Install native ClickHouse from its signed repository
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ca-certificates curl gnupg
+          curl -fsSL https://packages.clickhouse.com/rpm/lts/repodata/repomd.xml.key -o /tmp/clickhouse.key
+          sudo gpg --dearmor --yes -o /usr/share/keyrings/clickhouse-keyring.gpg /tmp/clickhouse.key
+          echo 'deb [signed-by=/usr/share/keyrings/clickhouse-keyring.gpg arch=amd64] https://packages.clickhouse.com/deb lts main' | sudo tee /etc/apt/sources.list.d/clickhouse.list
+          sudo apt-get update
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y clickhouse-server clickhouse-client
+          sudo systemctl start clickhouse-server
+          for attempt in {1..60}; do
+            if clickhouse-client --query 'SELECT 1'; then break; fi
+            sleep 1
+          done
+          clickhouse-client --query 'SELECT version()'
+      - name: Real database and native daemon acceptance
+        env:
+          APM_TEST_CLICKHOUSE_URL: http://127.0.0.1:8123
+          APM_TEST_CLICKHOUSE_USER: default
+        run: |
+          go test ./internal/apm -run TestNativeClickHouseIntegration -v
+          chmod +x bin/relay-probe-linux-*
+          sudo bash tools/test-ubuntu-packages.sh --disposable-vm --clickhouse
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build, native-ubuntu, native-clickhouse]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v6
+        with:
+          name: ubuntu-debs
+          path: release/
+      - name: Publish packages after all native checks pass
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          (cd release && sha256sum -c SHA256SUMS)
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" release/*.deb release/SHA256SUMS --clobber
+          else
+            gh release create "$RELEASE_TAG" release/*.deb release/SHA256SUMS --verify-tag --title "Relay APM $RELEASE_TAG" --generate-notes
+          fi

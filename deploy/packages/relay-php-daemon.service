@@ -1,0 +1,30 @@
+[Unit]
+Description=Relay PHP agent daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=relay-php-daemon
+Group=relay-php-daemon
+RuntimeDirectory=relay-php-daemon
+RuntimeDirectoryMode=0755
+ExecStart=/usr/bin/relay-php-daemon --foreground --no-pidfile -c /etc/relay-php-daemon/daemon.cfg
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=60
+KillSignal=SIGTERM
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+UMask=0077
+MemoryMax=256M
+Environment=GOMEMLIMIT=192MiB
+
+[Install]
+WantedBy=multi-user.target

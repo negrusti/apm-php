@@ -1,0 +1,6 @@
+# Configure DNS first. Caddy obtains and renews the HTTPS certificate.
+# No access-log directive: collector URLs contain ingestion keys.
+apm.example.com {
+    encode gzip
+    reverse_proxy 127.0.0.1:8088
+}

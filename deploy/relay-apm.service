@@ -1,0 +1,28 @@
+[Unit]
+Description=Relay APM ingestion and WordPress dashboard
+After=network-online.target clickhouse-server.service
+Wants=network-online.target
+Requires=clickhouse-server.service
+
+[Service]
+Type=simple
+User=relay-apm
+Group=relay-apm
+EnvironmentFile=/etc/relay-apm/relay.env
+WorkingDirectory=/opt/relay-apm
+ExecStart=/opt/relay-apm/relay
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=20
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+UMask=0077
+MemoryMax=768M
+
+[Install]
+WantedBy=multi-user.target

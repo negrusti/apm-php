@@ -1,0 +1,27 @@
+{
+  "repository": "https://github.com/newrelic/newrelic-php-agent.git",
+  "release_url": "https://github.com/newrelic/newrelic-php-agent/releases/tag/v12.12.0.41",
+  "downloaded_on": "2026-10-25",
+  "date_timezone": "Asia/Bangkok",
+  "release_tag": "v12.12.0.41",
+  "commit": "cf77822cd783c43cf3f8bb2acc1caa22c49e23cb",
+  "version_file": "12.12.0",
+  "local_directory": "upstream/newrelic-php-agent",
+  "checkout": "detached HEAD at release tag",
+  "history": "shallow clone; full history not downloaded",
+  "components": {
+    "agent": "agent/ (C PHP extension)",
+    "shared_agent_core": "axiom/ (C instrumentation and serialization core)",
+    "daemon": "daemon/ (Go)",
+    "local_protocol_schema": "protocol/flatbuffers/protocol.fbs",
+    "infinite_tracing_schema": "protocol/infinite_tracing/v1.proto"
+  },
+  "license_file": "LICENSE",
+  "third_party_notices_file": "THIRD_PARTY_NOTICES.md",
+  "verification": {
+    "release_tag_matches_commit": true,
+    "git_connectivity_check": "passed",
+    "upstream_worktree": "clean",
+    "build_and_runtime_tests": "not performed"
+  }
+}

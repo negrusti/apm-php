@@ -1,0 +1,214 @@
+//
+// Copyright 2020 New Relic Corporation. All rights reserved.
+// SPDX-License-Identifier: Apache-2.0
+//
+
+package newrelic
+
+import (
+	"strconv"
+	"time"
+
+	"github.com/newrelic/newrelic-php-agent/daemon/internal/newrelic/collector"
+	"github.com/newrelic/newrelic-php-agent/daemon/internal/newrelic/infinite_tracing"
+	"github.com/newrelic/newrelic-php-agent/daemon/internal/newrelic/limits"
+)
+
+type AggregaterInto interface {
+	AggregateInto(h *Harvest)
+}
+
+type Harvest struct {
+	Metrics           *MetricTable
+	Errors            *ErrorHeap
+	SlowSQLs          *SlowSQLs
+	TxnTraces         *TxnTraces
+	TxnEvents         *TxnEvents
+	CustomEvents      *CustomEvents
+	ErrorEvents       *ErrorEvents
+	SpanEvents        *SpanEvents
+	LogEvents         *LogEvents
+	PhpPackages       *PhpPackages
+	commandsProcessed int
+	pidSet            map[int]struct{}
+	httpErrorSet      map[int]float64
+}
+
+func NewHarvest(now time.Time, hl collector.EventConfigs) *Harvest {
+	nh := &Harvest{
+		Metrics:           NewMetricTable(limits.MaxMetrics, now),
+		Errors:            NewErrorHeap(limits.MaxErrors),
+		SlowSQLs:          NewSlowSQLs(limits.MaxSlowSQLs),
+		TxnTraces:         NewTxnTraces(),
+		TxnEvents:         NewTxnEvents(hl.AnalyticEventConfig.Limit),
+		CustomEvents:      NewCustomEvents(hl.CustomEventConfig.Limit),
+		ErrorEvents:       NewErrorEvents(hl.ErrorEventConfig.Limit),
+		SpanEvents:        NewSpanEvents(hl.SpanEventConfig.Limit),
+		LogEvents:         NewLogEvents(hl.LogEventConfig.Limit),
+		PhpPackages:       NewPhpPackages(),
+		commandsProcessed: 0,
+		pidSet:            make(map[int]struct{}),
+		httpErrorSet:      make(map[int]float64),
+	}
+
+	return nh
+}
+
+func (h *Harvest) empty() bool {
+	return len(h.pidSet) == 0 &&
+		h.CustomEvents.Empty() &&
+		h.ErrorEvents.Empty() &&
+		h.SpanEvents.Empty() &&
+		h.Errors.Empty() &&
+		h.Metrics.Empty() &&
+		h.SlowSQLs.Empty() &&
+		h.TxnEvents.Empty() &&
+		h.TxnTraces.Empty() &&
+		h.LogEvents.Empty() &&
+		h.PhpPackages.Empty()
+}
+
+func createTraceObserverMetrics(to *infinite_tracing.TraceObserver, metrics *MetricTable) {
+	if to == nil {
+		return
+	}
+
+	for name, val := range to.DumpSupportabilityMetrics() {
+		metrics.AddRaw([]byte(name), "", "", val, Forced)
+	}
+}
+
+func (h *Harvest) createHttpErrorMetrics(m *MetricTable) {
+	for code, val := range h.httpErrorSet {
+		m.AddCount("Supportability/Agent/Collector/HTTPError/"+strconv.Itoa(code), "", val, Forced)
+	}
+}
+
+// Update the Http error counts
+func (h *Harvest) IncrementHttpErrors(statusCode int) {
+	counter, isPresent := h.httpErrorSet[statusCode]
+
+	if isPresent {
+		h.httpErrorSet[statusCode] = counter + 1
+	} else {
+		h.httpErrorSet[statusCode] = 1
+	}
+}
+
+func (h *Harvest) createEndpointAttemptsMetric(m *MetricTable, endpoint string, val float64) {
+	if val > 0 {
+		m.AddCount("Supportability/Agent/Collector/"+endpoint+"/Attempts", "", val, Forced)
+	}
+
+}
+
+// NOTE: It is important that this metric be created once per harvest period.
+func (h *Harvest) addInstanceReportingMetric(m *MetricTable) {
+	pidSetSize := len(h.pidSet)
+	if pidSetSize == 0 {
+		// For UI purposes, Instance/Reporting has to be nonzero.
+		pidSetSize = 1
+	}
+	m.AddCount("Instance/Reporting", "", float64(pidSetSize), Forced)
+}
+
+func (h *Harvest) createFinalMetrics(m *MetricTable, harvestLimits collector.EventHarvestConfig, to *infinite_tracing.TraceObserver, mc *MetricsController) {
+	if len(mc.duc) == 0 && len(mc.mc) == 0 {
+		// No agent data received, do not create derived metrics. This allows
+		// upstream to detect inactivity sooner.
+		return
+	}
+
+	if m.numDropped > 0 {
+		m.AddCount("Supportability/MetricsDropped", "", float64(m.numDropped), Forced)
+	}
+
+	// Certificate supportability metrics.
+	switch collector.CertPoolState {
+	case collector.SystemCertPoolMissing:
+		m.AddCount("Supportability/PHP/SystemCertificates/Unavailable", "", float64(1), Forced)
+	case collector.SystemCertPoolAvailable:
+		m.AddCount("Supportability/PHP/SystemCertificates/Available", "", float64(1), Forced)
+	default:
+	}
+
+	metricsMap := mc.AggregateMetricData()
+
+	// Custom Events Supportability Metrics
+	customEventMetrics := metricsMap[collector.CommandCustomEvents]
+	m.AddCount("Supportability/Events/Customer/Seen", "", customEventMetrics.seen, Forced)
+	m.AddCount("Supportability/Events/Customer/Sent", "", customEventMetrics.sent, Forced)
+	h.createEndpointAttemptsMetric(m, collector.CommandCustomEvents, customEventMetrics.failed)
+
+	// Transaction Events Supportability Metrics
+	transactionEventMetrics := metricsMap[collector.CommandTxnEvents]
+	m.AddCount("Supportability/AnalyticsEvents/TotalEventsSeen", "", transactionEventMetrics.seen, Forced)
+	m.AddCount("Supportability/AnalyticsEvents/TotalEventsSent", "", transactionEventMetrics.sent, Forced)
+	h.createEndpointAttemptsMetric(m, collector.CommandTxnEvents, transactionEventMetrics.failed)
+
+	// Error Events Supportability Metrics
+	errorEventMetrics := metricsMap[collector.CommandErrorEvents]
+	m.AddCount("Supportability/Events/TransactionError/Seen", "", errorEventMetrics.seen, Forced)
+	m.AddCount("Supportability/Events/TransactionError/Sent", "", errorEventMetrics.sent, Forced)
+	h.createEndpointAttemptsMetric(m, collector.CommandErrorEvents, errorEventMetrics.failed)
+
+	// Span Events Supportability Metrics
+	spanEventMetrics := metricsMap[collector.CommandSpanEvents]
+	m.AddCount("Supportability/SpanEvent/TotalEventsSeen", "", spanEventMetrics.seen, Forced)
+	m.AddCount("Supportability/SpanEvent/TotalEventsSent", "", spanEventMetrics.sent, Forced)
+	h.createEndpointAttemptsMetric(m, collector.CommandSpanEvents, spanEventMetrics.failed)
+
+	// Log Events Supportability Metrics
+	logEventMetrics := metricsMap[collector.CommandLogEvents]
+	m.AddCount("Supportability/Logging/Forwarding/Seen", "", logEventMetrics.seen, Forced)
+	m.AddCount("Supportability/Logging/Forwarding/Sent", "", logEventMetrics.sent, Forced)
+	h.createEndpointAttemptsMetric(m, collector.CommandLogEvents, logEventMetrics.failed)
+
+	// Harvest Limit and report period metrics
+	m.AddCount("Supportability/EventHarvest/ReportPeriod", "", float64(harvestLimits.ReportPeriod), Forced)
+	m.AddCount("Supportability/EventHarvest/AnalyticEventData/HarvestLimit", "", float64(harvestLimits.EventConfigs.AnalyticEventConfig.Limit), Forced)
+	m.AddCount("Supportability/EventHarvest/CustomEventData/HarvestLimit", "", float64(harvestLimits.EventConfigs.CustomEventConfig.Limit), Forced)
+	m.AddCount("Supportability/EventHarvest/ErrorEventData/HarvestLimit", "", float64(harvestLimits.EventConfigs.ErrorEventConfig.Limit), Forced)
+	m.AddCount("Supportability/EventHarvest/SpanEventData/HarvestLimit", "", float64(harvestLimits.EventConfigs.SpanEventConfig.Limit), Forced)
+	m.AddCount("Supportability/EventHarvest/LogEventData/HarvestLimit", "", float64(harvestLimits.EventConfigs.LogEventConfig.Limit), Forced)
+
+	h.createEndpointAttemptsMetric(m, m.Cmd(), m.NumFailedAttempts())
+
+	createTraceObserverMetrics(to, m)
+}
+
+type FailedHarvestSaver interface {
+	FailedHarvest(*Harvest)
+}
+
+type PayloadCreator interface {
+	FailedHarvestSaver
+	Empty() bool
+	Data(id AgentRunID, harvestStart time.Time) ([]byte, error)
+	// For many data types, the audit version is the same as the data. Those
+	// data types return nil from Audit.
+	Audit(id AgentRunID, harvestStart time.Time) ([]byte, error)
+	Cmd() string
+}
+
+func (x *MetricTable) Cmd() string  { return collector.CommandMetrics }
+func (x *CustomEvents) Cmd() string { return collector.CommandCustomEvents }
+func (x *ErrorEvents) Cmd() string  { return collector.CommandErrorEvents }
+func (x *SpanEvents) Cmd() string   { return collector.CommandSpanEvents }
+func (x *LogEvents) Cmd() string    { return collector.CommandLogEvents }
+func (x *ErrorHeap) Cmd() string    { return collector.CommandErrors }
+func (x *SlowSQLs) Cmd() string     { return collector.CommandSlowSQLs }
+func (x *TxnTraces) Cmd() string    { return collector.CommandTraces }
+func (x *TxnEvents) Cmd() string    { return collector.CommandTxnEvents }
+func (x *PhpPackages) Cmd() string  { return collector.CommandPhpPackages }
+
+func IntegrationData(p PayloadCreator, id AgentRunID, harvestStart time.Time) ([]byte, error) {
+	audit, err := p.Audit(id, harvestStart)
+	if nil != err {
+		return nil, err
+	}
+	if nil != audit {
+		return audit, nil
+	}
+	return p.Data(id, harvestStart)
+}

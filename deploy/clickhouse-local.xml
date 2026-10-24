@@ -1,0 +1,10 @@
+<clickhouse>
+    <!-- Install in /etc/clickhouse-server/config.d/relay-local.xml. -->
+    <listen_host replace="replace">127.0.0.1</listen_host>
+    <http_port>8123</http_port>
+    <logger>
+        <level>warning</level>
+        <size>20M</size>
+        <count>3</count>
+    </logger>
+</clickhouse>
