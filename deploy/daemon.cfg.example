@@ -7,7 +7,7 @@ backend = "https://apm.example.com"
 # private network, or use HTTPS for encrypted transport.
 
 address = "/run/relay-php-daemon/agent.sock"
-logfile = "/dev/stderr"
+logfile = "stderr"
 loglevel = "info"
 app_timeout = 10m
 

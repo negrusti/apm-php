@@ -8,7 +8,7 @@ A self-hosted ClickHouse backend, Go ingester and web dashboard for the stock Ne
 go run ./cmd/relay -demo
 ```
 
-Open [http://127.0.0.1:8088](http://127.0.0.1:8088). This explicitly selected mode uses labeled, illustrative in-memory data and only binds to loopback. It never substitutes for a failed ClickHouse connection. Go 1.17+ builds the project; use a maintained Go toolchain for deployment.
+Open [http://127.0.0.1:8088](http://127.0.0.1:8088). This explicitly selected mode uses labeled, illustrative in-memory data and only binds to loopback. It never substitutes for a failed ClickHouse connection. The backend builds with Go 1.17+; the modified daemon and CI use Go 1.27.3. Use a maintained toolchain for deployment.
 
 ## Implemented
 

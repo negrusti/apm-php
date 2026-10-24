@@ -57,17 +57,22 @@ printf '\n# Preserve this administrator edit across reinstall.\n' >> /etc/relay-
 config_checksum=$(sha256sum /etc/relay-apm/relay.env /etc/relay-apm/clients.json /etc/relay-php-daemon/daemon.cfg)
 systemctl daemon-reload
 systemctl enable --now relay-apm relay-php-daemon
-for attempt in {1..30}; do
-  if curl --silent --fail http://127.0.0.1:8088/healthz >/dev/null && [[ -S /run/relay-php-daemon/agent.sock ]]; then break; fi
-  sleep 1
-done
-systemctl is-active --quiet relay-apm relay-php-daemon
-curl --silent --fail http://127.0.0.1:8088/healthz >/dev/null
+wait_for_services() {
+  for attempt in {1..30}; do
+    if systemctl is-active --quiet relay-apm && systemctl is-active --quiet relay-php-daemon &&
+       [[ -S /run/relay-php-daemon/agent.sock ]] &&
+       curl --silent --fail http://127.0.0.1:8088/healthz >/dev/null; then return 0; fi
+    sleep 1
+  done
+  echo 'Backend and daemon did not become ready in 30 seconds.' >&2
+  return 1
+}
+wait_for_services
 # Reinstall while active; configuration, service enablement and running state survive.
 dpkg --force-confold -i "${packages[@]}"
 [[ "$config_checksum" == "$(sha256sum /etc/relay-apm/relay.env /etc/relay-apm/clients.json /etc/relay-php-daemon/daemon.cfg)" ]]
 systemctl is-enabled --quiet relay-apm relay-php-daemon
-systemctl is-active --quiet relay-apm relay-php-daemon
+wait_for_services
 "$probe" -phase send
 sleep 2
 systemctl stop relay-php-daemon

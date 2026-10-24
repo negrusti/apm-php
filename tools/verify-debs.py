@@ -71,6 +71,7 @@ def verify(path):
         config = data["etc/relay-php-daemon/daemon.cfg"][0]
         assert b'backend = "https://apm.example.com"' in config
         assert b"http://10.0.0.20:8088" in config
+        assert b'logfile = "stderr"' in config
         assert f"usr/share/doc/{package}/copyright" in data
     print(f"PASS {path.name}: {architecture}, systemd, conffiles, checksums, static ELF")
 
